@@ -1,0 +1,147 @@
+---
+title: "AprilM_11 Final Project"
+author: "April Meyer"
+date: "2/21/2020"
+output: 
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(ggplot2)  # For plotting
+library(class)
+library(VIM)
+library(tidyr)
+library(stringr)
+library(dplyr)
+library(usmap)
+```
+#### Introduction  
+After the 2014 killing of Michael Brown in Ferguson, Missouri, The Washington Post has started to collect a database of every fatal shooting in the US by a police officer in the line of duty. The protest movement, Black Lives Matter has increased focus on police accountability. This data includes information about the deceased including race, age, gender, if they were armed, mental health, fleeing and location. The post does not track deaths of people in police custody, non-shooting deaths, or by off-duty police. They aim to document conditions most like the Michael Brown in Ferguson. Centers for Disease control and FBI track fatal shootings by police, but according to Washington Post their data is incomplete. There has not been much dependable data around shootings by police before this movement and I would like to understand the current trends among fatal police shootings.  
+
+#### The Problem Statement  
+After the fatal shooting in 2014 waves of public protest broke out and lead to the movement of Black Lives Matter. I aim to look at the Washington Post data to see if there are trends that show signs of biases.  
+
+#### Analysis  
+My analysis included importing and cleaning the data. Once that was complete I sliced the data sets to compare variables.  
+```{r import and clean}
+#importing into a data frame
+PoliceKillingsUS <- read.csv("PoliceKillingsUS.csv")
+#Starting to clean and manipulate data
+# Replace all empty strings in flee & race with NA
+PoliceKillingsUS$flee[PoliceKillingsUS$flee == ""] <- NA
+PoliceKillingsUS$race[PoliceKillingsUS$race == ""] <- NA
+PoliceKillingsUS$armed[PoliceKillingsUS$armed == ""] <- NA
+#remove all rows with any missing values
+PoliceKillingsUS_clean <- na.omit(PoliceKillingsUS)
+# Apply separate() to date
+PoliceKillingsUS_clean <- separate(PoliceKillingsUS_clean, col = date, into = c("Day", "Month", "Year" ), sep = "/")
+PoliceKillingsUS_clean$Month <- as.factor(PoliceKillingsUS_clean$Month)
+PoliceKillingsUS_clean$Year <- as.factor(PoliceKillingsUS_clean$Year)
+#cleaning up name column by converting to character and trimming
+PoliceKillingsUS_clean$name <- as.character(PoliceKillingsUS_clean$name)
+PoliceKillingsUS_clean$name <- str_trim(PoliceKillingsUS_clean$name) 
+#cleaning up city & state column by converting to character and trimming
+PoliceKillingsUS_clean$name <- as.character(PoliceKillingsUS_clean$city)
+PoliceKillingsUS_clean$name <- str_trim(PoliceKillingsUS_clean$city) 
+PoliceKillingsUS_clean$name <- as.character(PoliceKillingsUS_clean$state)
+PoliceKillingsUS_clean$name <- str_trim(PoliceKillingsUS_clean$state) 
+# Apply unite() to PoliceKillingsUS_clean
+PoliceKillingsUS_cc <- unite(PoliceKillingsUS_clean, city_st, city, state, sep = ", ")
+PoliceKillingsUS_cc$city_st <- as.factor(PoliceKillingsUS_cc$city_st)
+# Check the structure
+str(PoliceKillingsUS_cc)
+```  
+
+```{r summary}
+# View a summary
+summary(PoliceKillingsUS_cc)
+```    
+
+```{r slice and dice}
+#creating different variables female and male
+femaleSubset <- subset(PoliceKillingsUS_cc, subset = gender == "F")
+maleSubset <- subset(PoliceKillingsUS_cc, subset = gender == "M")
+
+#creating different variables bodyCamera
+noCameraSubset <- subset(PoliceKillingsUS_cc, subset = body_camera == FALSE)
+CameraSubset <- subset(PoliceKillingsUS_cc, subset = body_camera == TRUE)
+
+#creating different variables mental illness
+noSignsMentalSubset <- subset(PoliceKillingsUS_cc, subset = signs_of_mental_illness == FALSE)
+SignsMentalSubset <- subset(PoliceKillingsUS_cc, subset = signs_of_mental_illness == TRUE)
+
+#creating different variables mental illness
+LosAngelesSubset <- subset(PoliceKillingsUS_cc, subset = city_st == "Los Angeles, CA")
+PhoenixSubset <- subset(PoliceKillingsUS_cc, subset = city_st == "Phoenix, AZ")
+``` 
+
+#### Implications   
+I have done some plots to show how variables compare and totals for some. I have also attempted to fit a glm model to see if a person is armed. Age and signs of mental illness would be worth looking into further. Since they have the greatest effect because the Pr(>|z|) is less than 0.05 for those four variables. 
+
+```{r plots, echo=FALSE}
+#table of armed counts
+# tableArmed <- table(PoliceKillingsUS_cc$armed)
+# as.data.frame(tableArmed)
+na.omit(PoliceKillingsUS_cc) %>% 
+  group_by(PoliceKillingsUS_cc$armed) %>%
+  summarize(Count=n()) %>%
+  mutate(Percent = round((Count/sum(Count)*100))) %>%
+  arrange(desc(Count))
+#table of armed counts
+na.omit(PoliceKillingsUS_cc) %>% 
+  group_by(PoliceKillingsUS_cc$city_st) %>%
+  summarize(Count=n()) %>%
+  mutate(Percent = round((Count/sum(Count)*100))) %>%
+  arrange(desc(Count))
+#bar chart Armed Individuals in Phoenix
+ggplot(PhoenixSubset) + geom_bar(aes(x = armed)) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + labs(title="Armed Individuals in Phoenix")
+
+#bar chart Mental Illness by Gender
+ggplot(PoliceKillingsUS_cc) + geom_bar(aes(x = signs_of_mental_illness)) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + facet_wrap(~ gender) + labs(title="Mental Illness by Gender")
+
+#usMap of deaths
+st_count <- summary(PoliceKillingsUS_clean$state)
+st_count <- stack(st_count)
+st_count <- st_count[c(2,1)]
+st_count$fips <- fips(st_count$ind)
+names(st_count)[2] <- "Total"
+plot_usmap(data = st_count, values = "Total", color = "blue", labels = FALSE) + 
+  scale_fill_continuous(low = "white", high = "blue", name = "Total", label = scales::comma) +
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black")) +
+  labs(title = "Deaths by State in the US")
+
+#line chart by year
+yr_count <- PoliceKillingsUS_cc %>%
+  group_by(Month, Year) %>%
+  summarise(count=n())
+ggplot(data = yr_count, aes(y=count, x = Month, group = Year, colour = Year)) + geom_line()
+```
+
+```{r predicting if armed, echo=FALSE}
+#Starting to clean and manipulate data
+PoliceKillingsUS_armed <- PoliceKillingsUS[c("armed", "age", "gender", "race", "signs_of_mental_illness", "flee")]
+# Replace all empty strings in flee & race with NA
+PoliceKillingsUS_armed$flee[PoliceKillingsUS$flee == ""] <- NA
+PoliceKillingsUS_armed$race[PoliceKillingsUS$race == ""] <- NA
+PoliceKillingsUS_armed$armed[PoliceKillingsUS$armed == ""] <- NA
+#remove all rows with any missing values
+PoliceKillingsUS_armed <- na.omit(PoliceKillingsUS_armed)
+PoliceKillingsUS_armed$armed <- as.character(PoliceKillingsUS_armed$armed)
+PoliceKillingsUS_armed$armed <- str_trim(PoliceKillingsUS_armed$armed) 
+# Converting armed to 0 is armed and 1 is not armed
+PoliceKillingsUS_armed$armed[PoliceKillingsUS_armed$armed == "undetermined"] <- "unarmed"
+PoliceKillingsUS_armed$armed[PoliceKillingsUS_armed$armed != "unarmed"] <- "1"
+PoliceKillingsUS_armed$armed[PoliceKillingsUS_armed$armed == "unarmed"] <- "0"
+PoliceKillingsUS_armed$armed <- as.integer(PoliceKillingsUS_armed$armed)
+# Check the structure
+str(PoliceKillingsUS_armed)
+
+model_all <- glm(formula = armed ~ ., family = binomial(), data = PoliceKillingsUS_armed)
+summary(model_all)
+```  
+#### Limitations  
+There were many limitations to this data set. First once I started digging into the data more there were many undefined, missing, and NA values. Also, there were inaccuracies in data due to duplicates. The source of the data caused problems; for example, using only existing newspaper sources which could not include small towns or shootings that did not make the newspapers. Lastly it was harder to do any predictive modelling due to all the categorical data.  
+#### Concluding Remarks  
+I enjoyed working on this project; however, I do wish I would have picked a better data set. I did not realize how many limitations I would encounter with this set. Furthermore, I want to learn more on how to prepare and clean data. That would have been helpful with this data set. 
